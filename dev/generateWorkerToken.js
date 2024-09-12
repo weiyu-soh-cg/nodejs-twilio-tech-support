@@ -10,7 +10,7 @@ const util = taskrouter.util;
 const ACCOUNT_SID = process.env.TR_ACCOUNT_SID;
 const ACCOUNT_AUTH_TOKEN = process.env.TR_AUTH_TOKEN;
 const WORKSPACE_SID = process.env.WORKSPACE_SID;
-const WORKER_SID = 'WKb9302b30213ee6a76c10cf8b4cf94612';
+const WORKER_SID = 'WK786b9eec836a436718bb0ae318a7997c';
 
 console.log("+ ACCOUNT_SID   :" + ACCOUNT_SID + ":");
 console.log("+ ACCOUNT_AUTH_TOKEN    :" + ACCOUNT_AUTH_TOKEN + ":");

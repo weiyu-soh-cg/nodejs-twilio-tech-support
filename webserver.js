@@ -1,3 +1,4 @@
+require('dotenv').config();
 // -----------------------------------------------------------------------------
 // TaskRouter web server
 // 
@@ -119,26 +120,98 @@ function generateToken(workerSid, tokenPassword) {
 // Web server interface to call functions.
 // 
 // -----------------------------------------------------------------------------
+// app.get('/tfptaskrouter/generateToken', function (req, res) {
+//     sayMessage("+ Generate Token.");
+//     if (req.query.tokenPassword) {
+//         theTokenPassword = req.query.tokenPassword;
+//         if (theTokenPassword === TR_TOKEN_PASSWORD) {
+//             if (req.query.clientid) {
+//                 theClientid = req.query.clientid;
+//                 var workerNameQuery = "`name IN ['" + theClientid + "']}`";
+//                 trClient.taskrouter.v1.workspaces(WORKSPACE_SID)
+//                         .workers
+//                         .list({targetWorkersExpression: workerNameQuery})
+//                         .then(workers => {
+//                             if (workers.length === 0) {
+//                                 res.status(404).send("No worker found with the given clientid");
+//                                 console.log("No worker found with the given clientid");
+//                             } else {
+//                                 const worker = workers[0];
+//                                 const token = generateToken(worker.sid, theTokenPassword);
+//                                 res.send(token);
+//                             }
+//                         })
+//                         .catch(error => {
+//                             console.error("Error fetching workers:", error);
+//                             res.status(500).send("Internal server error");
+//                         });
+//             } else {
+//                 sayMessage("- Parameter required: clientid.");
+//                 res.sendStatus(502);
+//             }
+//         } else {
+//             sayMessage("- Required, valid: tokenPassword.");
+//             res.sendStatus(502);
+//         }
+//     } else {
+//         sayMessage("- Parameter required: tokenPassword.");
+//         res.sendStatus(502);
+//     }
+// });
 app.get('/tfptaskrouter/generateToken', function (req, res) {
     sayMessage("+ Generate Token.");
     if (req.query.tokenPassword) {
         theTokenPassword = req.query.tokenPassword;
         if (theTokenPassword === TR_TOKEN_PASSWORD) {
-            if (req.query.clientid) {
-                theClientid = req.query.clientid;
-                var workerNameQuery = "`name IN ['" + theClientid + "']}`";
-                trClient.taskrouter.v1.workspaces(WORKSPACE_SID)
-                        .workers
-                        .list({targetWorkersExpression: workerNameQuery})
-                        .then(workers => workers.forEach(worker => {
-                                workerSid = worker.sid;
-                                console.log("++ workerSid: " + workerSid);
-                                res.send(generateToken(workerSid, theTokenPassword));
-                            }));
-            } else {
-                sayMessage("- Parameter required: clientid.");
-                res.sendStatus(502);
-            }
+            // First, let's fetch and print all workers
+            trClient.taskrouter.v1.workspaces(WORKSPACE_SID)
+                .workers
+                .list()
+                .then(allWorkers => {
+                    console.log("All workers (raw response):");
+                    allWorkers.forEach(worker => {
+                        console.log(JSON.stringify(worker, null, 2));
+                    });
+                
+                    console.log("\nSummarized worker info:");
+                    allWorkers.forEach(worker => {
+                        console.log(`- ${worker.friendlyName} (SID: ${worker.sid})`);
+                    });
+                    
+                    // Now proceed with the original logic
+                    if (req.query.clientid) {
+                        theClientid = req.query.clientid;
+                        var workerNameQuery = `friendly_name CONTAINS '${theClientid}'`;
+                        //var workerNameQuery = `friendly_name CONTAINS 'Agent 1'`;
+                        console.log(`Worker query: ${workerNameQuery}`);
+                        return trClient.taskrouter.v1.workspaces(WORKSPACE_SID)
+                            .workers
+                            .list({targetWorkersExpression: workerNameQuery})
+                            .then(workers => {
+                                console.log(`Query returned ${workers.length} worker(s):`);
+                                workers.forEach(worker => {
+                                    console.log(`- friendlyName: ${worker.friendlyName}, SID: ${worker.sid}`);
+                                });
+                                return workers; // Return the workers for the next .then() block
+                            });
+                    } else {
+                        throw new Error("Parameter required: clientid");
+                    }
+                })
+                .then(workers => {
+                    if (workers.length === 0) {
+                        console.log("No worker found with the given clientid");
+                        res.status(404).send("No worker found with the given clientid");
+                    } else {
+                        const worker = workers[0];
+                        const token = generateToken(worker.sid, theTokenPassword);
+                        res.send(token);
+                    }
+                })
+                .catch(error => {
+                    console.error("Error:", error.message);
+                    res.status(500).send("Internal server error: " + error.message);
+                });
         } else {
             sayMessage("- Required, valid: tokenPassword.");
             res.sendStatus(502);

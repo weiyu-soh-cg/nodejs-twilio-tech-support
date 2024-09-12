@@ -14,9 +14,9 @@ const util = taskrouter.util;
 const ACCOUNT_SID = process.env.TR_ACCOUNT_SID;
 const ACCOUNT_AUTH_TOKEN = process.env.TR_AUTH_TOKEN;
 const WORKSPACE_SID = process.env.WORKSPACE_SID;
-console.log("+ ACCOUNT_SID   :" + ACCOUNT_SID + ":");
-console.log("+ ACCOUNT_AUTH_TOKEN    :" + ACCOUNT_AUTH_TOKEN + ":");
-console.log("+ WORKSPACE_SID :" + WORKSPACE_SID + ":");
+console.log("+ ACCOUNT_SID   :" + ACCOUNT_SID + ":\n");
+console.log("+ ACCOUNT_AUTH_TOKEN    :" + ACCOUNT_AUTH_TOKEN + ":\n");
+console.log("+ WORKSPACE_SID :" + WORKSPACE_SID + ":\n");
 
 const TASKROUTER_BASE_URL = 'https://taskrouter.twilio.com';
 const version = 'v1';
@@ -59,7 +59,7 @@ const capability = new taskrouter.WorkerCapability({
     accountSid: ACCOUNT_SID,
     authToken: ACCOUNT_AUTH_TOKEN,
     workspaceSid: WORKSPACE_SID,
-    workerSid: "WKb9302b30213ee6a76c10cf8b4cf94612"
+    workerSid: "WK786b9eec836a436718bb0ae318a7997c"
 });
 eventBridgePolicies.concat(workspacePolicies).forEach(policy => {
     capability.addPolicy(policy);

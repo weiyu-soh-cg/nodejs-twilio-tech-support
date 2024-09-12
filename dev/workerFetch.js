@@ -25,7 +25,7 @@ async function getWorkerSid(theIdentity) {
 }
 getWorkerSid("dave");
 
-var WORKER_SID = 'WKb9302b30213ee6a76c10cf8b4cf94612';
+var WORKER_SID = 'WK786b9eec836a436718bb0ae318a7997c';
 var abc = trClient.taskrouter.v1.workspaces(workspaceSid)
         .workers(WORKER_SID)
         .fetch()
