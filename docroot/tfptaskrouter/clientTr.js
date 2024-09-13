@@ -14,6 +14,57 @@ var ActivitySid_Unavailable = "";
 
 var theConference = "";
 
+let device;
+let connection = null;
+
+function setupDevice(token, applicationSid) {
+    device = new Twilio.Device(token, {
+        codecPreferences: ['opus', 'pcmu'],
+        fakeLocalDTMF: true,
+        enableRingingState: true,
+        applicationSid: applicationSid
+    });
+
+    device.on('ready', function() {
+        logger('Twilio.Device Ready!');
+    });
+
+    device.on('error', function(error) {
+        logger('Twilio.Device Error: ' + error.message);
+    });
+
+    device.on('connect', function(conn) {
+        logger('Successfully established call!');
+        connection = conn;
+    });
+
+    device.on('disconnect', function(conn) {
+        logger('Call ended.');
+        connection = null;
+    });
+}
+
+function acceptCall() {
+    if (device) {
+        device.connect({ callerId: ReservationObject.task.attributes.from })
+            .then(function(conn) {
+                logger("Agent connected to call via Voice SDK.");
+                connection = conn;
+            })
+            .catch(function(error) {
+                logger("Error connecting agent to call: " + error.message);
+            });
+    } else {
+        logger("Voice SDK device not set up. Cannot connect agent to call.");
+    }
+}
+
+function endCall() {
+    if (connection) {
+        connection.disconnect();
+    }
+}
+
 // -----------------------------------------------------------------
 // let worker = new Twilio.TaskRouter.Worker("<?= $workerToken ?>");
 function registerTaskRouterCallbacks() {
@@ -162,36 +213,17 @@ function rejectReservation() {
 }
 function acceptReservation() {
     logger("acceptReservation(): start a conference call, and connect caller and agent.");
-    // Set Agent Conference on:
-    //     https://www.twilio.com/console/voice/conferences/settings
-    //
-    // Conference call options:
-    //     https://www.twilio.com/docs/taskrouter/js-sdk/workspace/worker
-    //  Note, Timeout and Record doesn't work.
-    // Tried:
-    //  https://twilio.github.io/twilio-taskrouter.js/Reservation.html#.ConferenceOptions
-    // With:
-    //  https://www.twilio.com/docs/voice/twiml/conference#attributes
-    //  
-    // Now using:
-    // https://www.twilio.com/docs/voice/api/conference-participant#create-a-participant-agent-conference-only
     var options = {
         "PostWorkActivitySid": ActivitySid_Offline,
-        "Timeout": 5 // Timeout is the time allowed for the phone to ring, once the reservation is accepted.
-                // , "record": "true" // true or false (default)
-                // , "record": "record-from-start" // record-from-start or do-not-record (default)
+        "Timeout": 5
     };
-    // logger("Conference call attribute, Record: " + options.Record);
     logger("Conference call attribute, Timeout: " + options.Timeout);
     logger("TaskRouter post activity SID: " + options.PostWorkActivitySid);
-    //
-    // https://www.twilio.com/docs/taskrouter/api/reservations
-    // https://www.twilio.com/docs/taskrouter/js-sdk/worker#reservation-conference
-    // Note: The conference instruction can only be issued on a task that was created using the <Enqueue> TwiML verb.
-    // https://www.twilio.com/docs/taskrouter/js-sdk/workspace/worker
-    // https://www.twilio.com/docs/taskrouter/js-sdk/workspace/worker#reservation-conference
+
     ReservationObject.conference(null, null, null, null, null, options);
-    logger("Conference initiated.");
+    logger("Conference initiated via TaskRouter.");
+
+    acceptCall();
     setTrButtons("In a Call");
 }
 
@@ -250,30 +282,28 @@ function trToken() {
         logger("- Required: Token password.");
         return;
     }
-    // Since, programs cannot make an Ajax call to a remote resource,
-    // Need to do an Ajax call to a local program that goes and gets the token.
-    // logger("Refresh the TaskRouter token using client id: " + clientId + "&tokenPassword=" + tokenPassword);
     logger("Refresh the TaskRouter token using client id: " + clientId);
     $("div.trMessages").html("Refreshing token, please wait.");
-    $.get("generateToken?clientid=" + clientId + "&tokenPassword=" + tokenPassword, function (theToken) {
-        $("div.trMessages").html("TaskRouter token received.");
-        // theToken = "..."; // Can use to hardcode a test token.
-        // logger("TaskRouter Worker token refreshed :" + theToken + ":");
-        logger("TaskRouter Worker token refreshed, stringlength :" + theToken.length + ":");
-        worker = new Twilio.TaskRouter.Worker(theToken);
+    $.get("generateToken?clientid=" + clientId + "&tokenPassword=" + tokenPassword, function (tokens) {
+        $("div.trMessages").html("TaskRouter and Voice tokens received.");
+        logger("TaskRouter Worker token refreshed, stringlength :" + tokens.workerToken.length + ":");
+        logger("Voice token refreshed, stringlength :" + tokens.voiceToken.length + ":");
+        worker = new Twilio.TaskRouter.Worker(tokens.workerToken);
+        setupDevice(tokens.voiceToken, tokens.applicationSid);
         registerTaskRouterCallbacks();
         $("div.msgClientid").html("TaskRouter Token id: " + clientId);
         trTokenValid = true;
-        logger("TaskRouter token refreshed.");
+        logger("TaskRouter and Voice tokens refreshed.");
         tokenClientId = clientId;
-        $("div.msgTokenPassword").html("TaskRouter Token refreshed");
+        $("div.msgTokenPassword").html("TaskRouter and Voice Tokens refreshed");
     })
-            .fail(function () {
-                logger("- Error refreshing the TaskRouter token.");
-                $("div.trMessages").html("Identiy and password invalid.");
-                return;
-            });
+    .fail(function () {
+        logger("- Error refreshing the tokens.");
+        $("div.trMessages").html("Identity and password invalid.");
+        return;
+    });
 }
+
 
 // -----------------------------------------------------------------------------
 // Conference call functions
@@ -283,6 +313,7 @@ function setButtonEndConference(value) {
     setTrButtons("Available");
 }
 function endConference() {
+    endCall();
     if (theConference === "") {
         $("div.trMessages").html("Conference call not started.");
         logger("- theConference not set.");
@@ -290,7 +321,6 @@ function endConference() {
     }
     $("div.callMessages").html("Please wait, ending conference.");
     logger("End the conference: " + theConference);
-    // setButtons("endConference()");
     setButtonEndConference(true);
     $.get("conferenceCompleted?conferenceSid=" + theConference, function (theResponse) {
         logger("Response: " + theResponse);
@@ -300,6 +330,7 @@ function endConference() {
         return;
     });
 }
+
 
 // -----------------------------------------------------------------
 function setTrButtons(workerActivity) {

@@ -31,6 +31,8 @@ var app = express();
 // TaskRouter
 
 const taskrouter = require('twilio').jwt.taskrouter;
+const ClientCapability = require('twilio').jwt.ClientCapability;
+
 const util = taskrouter.util;
 
 // TaskRouter worker application password to obtain an access token.
@@ -39,6 +41,8 @@ const TR_TOKEN_PASSWORD = process.env.TR_TOKEN_PASSWORD;
 const TR_ACCOUNT_SID = process.env.TR_ACCOUNT_SID;
 const TR_AUTH_TOKEN = process.env.TR_AUTH_TOKEN;
 const WORKSPACE_SID = process.env.WORKSPACE_SID;
+const TWILIO_TWIML_APP_SID = process.env.TWILIO_TWIML_APP_SID;
+
 console.log("+ TR_ACCOUNT_SID   :" + TR_ACCOUNT_SID + ":");
 console.log("+ WORKSPACE_SID :" + WORKSPACE_SID + ":");
 //
@@ -68,52 +72,42 @@ function sayMessage(message) {
 
 const TASKROUTER_BASE_URL = 'https://taskrouter.twilio.com';
 const version = 'v1';
-function generateToken(workerSid, tokenPassword) {
-    sayMessage("+ Generate token, workerSid: " + workerSid);
+function generateToken(workerSid) {
+    const TaskRouterCapability = taskrouter.TaskRouterCapability;
+    const Policy = TaskRouterCapability.Policy;
 
-    // Helper function to create Policy
-    function buildWorkspacePolicy(options) {
-        options = options || {};
-        var resources = options.resources || [];
-        var urlComponents = [TASKROUTER_BASE_URL, version, 'Workspaces', WORKSPACE_SID]
-        return new taskrouter.TaskRouterCapability.Policy({
-            url: urlComponents.concat(resources).join('/'),
-            method: options.method || 'GET',
-            allow: true
-        });
-    }
-    // Event Bridge Policies
-    // Worker Policies
-    const workspacePolicies = [
-        // Workspace fetch Policy
-        buildWorkspacePolicy(),
-        // Workspace subresources fetch Policy
-        buildWorkspacePolicy({resources: ['**']}),
-        // Workspace Activities Update Policy
-        buildWorkspacePolicy({resources: ['Activities'], method: 'POST'}),
-        // Workspace Activities Worker Reserations Policy
-        buildWorkspacePolicy({resources: ['Workers', workerSid, 'Reservations', '**'], method: 'POST'}),
-        //
-        // Should restrict the following,
-        // however it allows the worker set themselves online and offline.
-        buildWorkspacePolicy({resources: ['**'], method: 'POST'}),
-    ];
-
-    const capability = new taskrouter.TaskRouterCapability({
+    const capability = new TaskRouterCapability({
         accountSid: TR_ACCOUNT_SID,
         authToken: TR_AUTH_TOKEN,
         workspaceSid: WORKSPACE_SID,
-        channelId: workerSid
-    });
-    const eventBridgePolicies = util.defaultEventBridgePolicies(TR_ACCOUNT_SID, workerSid);
-    const workerPolicies = util.defaultWorkerPolicies(version, WORKSPACE_SID, workerSid);
-    eventBridgePolicies.concat(workerPolicies).concat(workspacePolicies).forEach(function (policy) {
-        capability.addPolicy(policy);
+        channelId: workerSid,
+        ttl: 3600,
+        workerSid: workerSid
     });
 
-    const theToken = capability.toJwt();
-    console.log("+ theToken: " + theToken);
-    return(theToken);
+    const voiceCapability = new ClientCapability({
+        accountSid: TR_ACCOUNT_SID,
+        authToken: TR_AUTH_TOKEN,
+    });
+
+    voiceCapability.addScope(
+        new ClientCapability.IncomingClientScope(workerSid)
+    );
+    voiceCapability.addScope(
+        new ClientCapability.OutgoingClientScope({
+            applicationSid: process.env.TWILIO_TWIML_APP_SID,
+            clientName: workerSid,
+        })
+    );
+
+    const workerToken = capability.toJwt();
+    const voiceToken = voiceCapability.toJwt();
+
+    return { 
+        workerToken, 
+        voiceToken,
+        applicationSid: TWILIO_TWIML_APP_SID  // Include this
+    };
 }
 
 // -----------------------------------------------------------------------------
@@ -204,8 +198,8 @@ app.get('/tfptaskrouter/generateToken', function (req, res) {
                         res.status(404).send("No worker found with the given clientid");
                     } else {
                         const worker = workers[0];
-                        const token = generateToken(worker.sid, theTokenPassword);
-                        res.send(token);
+                        const tokens = generateToken(worker.sid);  // This line changed
+                        res.json(tokens);  // This line changed
                     }
                 })
                 .catch(error => {
@@ -220,6 +214,33 @@ app.get('/tfptaskrouter/generateToken', function (req, res) {
         sayMessage("- Parameter required: tokenPassword.");
         res.sendStatus(502);
     }
+});
+
+const VoiceResponse = require('twilio').twiml.VoiceResponse;
+
+app.post('/voice', (req, res) => {
+    const twiml = new VoiceResponse();
+
+    // Get the worker's client name from the request
+    const workerClientName = req.body.Worker;
+
+    if (workerClientName) {
+        // If a worker is specified, connect to that worker
+        const dial = twiml.dial();
+        dial.client(workerClientName);
+    } else {
+        // If no worker is specified, this is likely an outbound call from a worker
+        // You can customize this behavior as needed
+
+        twiml.say('Thanks for calling. Please wait while we connect you to an agent.');
+        
+        // You might want to add logic here to find an available worker and connect to them
+        // For now, we'll just hang up after the message
+        twiml.hangup();
+    }
+
+    res.type('text/xml');
+    res.send(twiml.toString());
 });
 
 // -----------------------------------------------------------------------------
