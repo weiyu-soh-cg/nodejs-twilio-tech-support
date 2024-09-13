@@ -85,6 +85,14 @@ function generateToken(workerSid) {
         workerSid: workerSid
     });
 
+    // Add required TaskRouter policies
+    const workerPolicies = util.defaultWorkerPolicies(WORKSPACE_SID, workerSid);
+    workerPolicies.forEach(policy => capability.addPolicy(policy));
+
+    // Allow WebSocket connections
+    const eventBridgePolicies = util.defaultEventBridgePolicies(TR_ACCOUNT_SID, workerSid);
+    eventBridgePolicies.forEach(policy => capability.addPolicy(policy));
+
     const voiceCapability = new ClientCapability({
         accountSid: TR_ACCOUNT_SID,
         authToken: TR_AUTH_TOKEN,
